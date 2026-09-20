@@ -1,0 +1,29 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto_broker
+    restart: unless-stopped
+    # network_mode: host
+    ports:
+      #- "1883:1883"    # MQTT
+      - "8883:8883"    # MQTTS (secure)
+      #- "9001:9001"    # WebSockets
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/certs:/mosquitto/certs:ro
+      - ./mosquitto/data:/mosquitto/data:rw
+      - ./mosquitto/log:/mosquitto/log:rw
+
+  dashboard:
+    build: ./dashboard
+    container_name: paho_streamlit
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./dashboard/certs:/usr/src/app/certs:ro
+      - ./dashboard/dashboard.py:/usr/src/app/dashboard.py:ro
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    # environment:
+    #   - STREAMLIT_SERVER_ADDRESS=0.0.0.0
