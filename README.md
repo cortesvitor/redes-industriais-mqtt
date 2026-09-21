@@ -1,4 +1,4 @@
-# Redes Industrais: Prática 2 - MQTT
+# Redes Industriais: Prática 2 - MQTT
 
 Sistema IIoT (Industrial Internet of Things) utilizando **Mosquitto MQTT Broker**, **Paho MQTT Client** e **Streamlit** com criptografia **TLS/mTLS**, rodando em ambiente isolado via **Docker Compose**.
 
@@ -42,9 +42,9 @@ docker compose up -d
 docker compose logs -f
 ```
 
-3. **Conecte os clientes ao Broker** através do IP local e da  porta `8883`.
+3. **Conecte os clientes ao Broker** através do IP local e da porta `8883`.
 
-4. **Acesse a [dashboard](localhost:8501)**  para interagir com o sistema.
+4. **Acesse a [dashboard](localhost:8501)** para interagir com o sistema.
 
 
 ## Comandos úteis
@@ -82,4 +82,4 @@ Acesse a [documentação](https://mosquitto.org/man/mosquitto-tls-7.html) para e
 
 ## License
 
-The source code is released under a [MIT License](./LICENSE).
+The source code is released under an [MIT License](./LICENSE).
