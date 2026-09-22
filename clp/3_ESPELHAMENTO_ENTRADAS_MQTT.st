@@ -14,6 +14,10 @@ END_VAR
 
 (* ===== PARTE 2 - CAIXA DE BAIXO ===== *)
 
+(* I00 e I01 sao as entradas integradas do XP340. Se o compilador
+   acusar 'not defined', confira o nome real em
+   Configuration (Config) > XP340 > Integrated I/O. *)
+
 IF I00 THEN
     PUBS_PAYLOADS[1] := 'ON';
 ELSE
