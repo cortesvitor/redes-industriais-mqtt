@@ -4,6 +4,14 @@
 O Paho roda em uma thread em backgroud para interagir com o Broker MQTT.
 O Streamlit roda este script em loop (o decorador @st.cache_resource
 evita que os recursos sejam redefinidos).
+
+Direcao dos topicos:
+  XP340/I_00, I_01  -> publicado pelo CLP (entrada fisica) e tambem
+                       pelo dashboard (entrada virtual). Ambos assinam.
+  XP340/Q_00, Q_01  -> publicado pelo dashboard (comando de saida).
+                       O CLP assina e aciona a saida fisica.
+
+Payload: "ON" / "OFF" em todos os topicos.
 """
 
 import streamlit as st
@@ -16,7 +24,7 @@ def get_state():
     return {
         # "MQTT_BROKER_HOST": "10.0.0.90",
         "MQTT_BROKER_HOST": "mosquitto",
-        "MQTT_BROKER_PORT": 8883,
+        "MQTT_BROKER_PORT": 1883,
         "counter": 0,
         "I_00": "OFF",
         "I_01": "OFF",
@@ -59,6 +67,8 @@ def iniciar_mqtt():
             print("Conectado ao Broker MQTT com sucesso!")
             client.subscribe([
                 (Topics.TOPIC_COUNTER, 0),
+                (Topics.TOPIC_I_00, 0),
+                (Topics.TOPIC_I_01, 0),
                 (Topics.TOPIC_Q_00, 0),
                 (Topics.TOPIC_Q_01, 0)
             ])
@@ -68,7 +78,7 @@ def iniciar_mqtt():
 
         # Mensagens MQTT são sempre transmitidas com tipo 'bytes'!
         # Sempre é necessário decodificar com o decode('utf-8')  e depois analisar o tipo interno.
-        payload = msg.payload.decode('utf-8')
+        payload = msg.payload.decode('utf-8').strip()
 
         match msg.topic:
 
@@ -82,13 +92,15 @@ def iniciar_mqtt():
                 except Exception as e:
                     print(e)
 
-            # A mensagem de TOPIC_Q_XX espera tipo interno 'string'.
+            # As mensagens de TOPIC_I_XX e TOPIC_Q_XX esperam tipo interno 'string'.
+            case Topics.TOPIC_I_00:
+                state["I_00"] = payload
+            case Topics.TOPIC_I_01:
+                state["I_01"] = payload
             case Topics.TOPIC_Q_00:
                 state["Q_00"] = payload
-                print(payload)
             case Topics.TOPIC_Q_01:
                 state["Q_01"] = payload
-                print(payload)
 
     # Cliente MQTT que se conectará ao Broker MQTT
     client = mqtt.Client(
@@ -96,19 +108,20 @@ def iniciar_mqtt():
         client_id="paho-client-01",
     )
 
-    # Configuração dos certificados de autenticação para MQTT com mTLS (MQTTS)
-    client.tls_set(
-        ca_certs="certs/ca.crt",
-        certfile="certs/paho_client.crt",
-        keyfile="certs/paho_client.key",
-    )
-
-    client.tls_insecure_set(True)  # Habilitar em caso de problemas de CN na autenticação mTLS
+    # Certificados mTLS desabilitados neste teste (broker escutando 1883 sem TLS).
+    # Para religar: voltar o listener 8883 com cafile/certfile/keyfile no
+    # mosquitto.conf, reabrir a porta no compose e descomentar o bloco abaixo.
+    # client.tls_set(
+    #     ca_certs="certs/ca.crt",
+    #     certfile="certs/paho_client.crt",
+    #     keyfile="certs/paho_client.key",
+    # )
+    # client.tls_insecure_set(True)  # Habilitar em caso de problemas de CN na autenticação mTLS
 
     client.on_connect = on_connect
     client.on_message = on_message
 
-    # Parâmetros de conexão. MQTT com mTLS (MQTTS) roda na porta 8883 ao invés da 1883.
+    # Parâmetros de conexão. Porta 1883 = MQTT sem TLS.
     client.connect(
         host=state['MQTT_BROKER_HOST'],
         port=state['MQTT_BROKER_PORT'],
@@ -127,21 +140,23 @@ mqtt_client = iniciar_mqtt()
 # DASHBOARD (Streamlit) -------------------------------------------------------
 
 # Listeners dos botões do streamlit que publicam no Broker MQTT
+def _publicar(topico, ligado):
+    mqtt_client.publish(topico, "ON" if ligado else "OFF", retain=True)
+
 def on_change_I_00():
-    mqtt_client.publish(
-        Topics.TOPIC_I_00,
-        "ON" if st.session_state.I_00 else "OFF",
-    )
+    _publicar(Topics.TOPIC_I_00, st.session_state.I_00)
 
 def on_change_I_01():
-    mqtt_client.publish(
-        Topics.TOPIC_I_01,
-        "ON" if st.session_state.I_01 else "OFF",
-    )
+    _publicar(Topics.TOPIC_I_01, st.session_state.I_01)
+
+def on_change_Q_00():
+    _publicar(Topics.TOPIC_Q_00, st.session_state.Q_00)
+
+def on_change_Q_01():
+    _publicar(Topics.TOPIC_Q_01, st.session_state.Q_01)
 
 
 # Layout da página/interface streamlit
-# st.set_page_config(page_title="Painel MQTT", layout="centered")
 st.set_page_config(page_title="Painel MQTT", layout="wide")
 st.title("Prática 2 - MQTT")
 st.caption(f"Broker Address: `{state['MQTT_BROKER_HOST']}:{state['MQTT_BROKER_PORT']}`")
@@ -151,6 +166,10 @@ st.divider()  # Um simples divisor na interface.
 # Dashboard contendo os elementos dinâmicos (atualizada a cada 100ms)
 @st.fragment(run_every="0.1s")
 def dashboard():
+
+    st.subheader("Entradas")
+    st.caption("Publicadas pelo CLP (entrada física) ou pelos toggles (entrada virtual).")
+
     col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
@@ -163,24 +182,55 @@ def dashboard():
     with col2:
         # Seletor da entrada 'I_00'
         st.toggle(
-            label="Entrada I_00",
+            label="Forçar I_00",
             key="I_00",
             on_change=on_change_I_00
         )
-        # Mostrador da saída 'Q_00'
+        # Estado de I_00 lido do broker
         st.metric(
-            label="Saída Q_00",
-            value=state['Q_00']
+            label="Entrada I_00",
+            value=state['I_00']
         )
 
     with col3:
         # Seletor da entrada 'I_01'
         st.toggle(
-            label="Entrada I_01",
+            label="Forçar I_01",
             key="I_01",
             on_change=on_change_I_01
         )
-        # Mostrador da saída 'Q_01'
+        # Estado de I_01 lido do broker
+        st.metric(
+            label="Entrada I_01",
+            value=state['I_01']
+        )
+
+    st.divider()
+
+    st.subheader("Saídas")
+    st.caption("Comandadas pelo dashboard. O CLP assina estes tópicos e aciona as saídas físicas.")
+
+    col4, col5 = st.columns([1, 1])
+
+    with col4:
+        # Comando da saída 'Q_00'
+        st.toggle(
+            label="Acionar Q_00",
+            key="Q_00",
+            on_change=on_change_Q_00
+        )
+        st.metric(
+            label="Saída Q_00",
+            value=state['Q_00']
+        )
+
+    with col5:
+        # Comando da saída 'Q_01'
+        st.toggle(
+            label="Acionar Q_01",
+            key="Q_01",
+            on_change=on_change_Q_01
+        )
         st.metric(
             label="Saída Q_01",
             value=state['Q_01']

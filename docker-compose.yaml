@@ -5,8 +5,8 @@ services:
     restart: unless-stopped
     # network_mode: host
     ports:
-      #- "1883:1883"    # MQTT
-      - "8883:8883"    # MQTTS (secure)
+      - "1883:1883"    # MQTT
+      #- "8883:8883"   # MQTTS (secure) - desabilitado neste teste
       #- "9001:9001"    # WebSockets
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
